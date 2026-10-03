@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {"type": "command", "command": "node /home/user/workspace/toolgate/gate-hook.mjs"}
+        ]
+      }
+    ]
+  }
+}

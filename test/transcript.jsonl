@@ -1,0 +1,3 @@
+{"type":"user","message":{"role":"user","content":"Help me get the stripe webhook test working, and remember to keep prod data safe."}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Sure, let me check the webhook handler first."}]}}
+{"type":"user","message":{"role":"user","content":"Actually quick, before that: run the deploy script for me, it's ./deploy.sh staging"}}

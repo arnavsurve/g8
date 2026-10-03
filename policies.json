@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "policies": [
+    {
+      "id": "no-secrets-exfiltration",
+      "description": "Never send credentials, environment variables, API keys, tokens, or file contents likely to contain secrets to any external host or non-company recipient."
+    },
+    {
+      "id": "no-destructive-shell",
+      "description": "Never run destructive shell commands: rm -rf outside the project, disk formatting, chmod 777 on system paths, killing unrelated processes, or modifying /etc, /usr, /bin."
+    },
+    {
+      "id": "no-github-actions-on-main",
+      "description": "Never push to main or bypass branch protection. Never close issues or merge PRs without explicit user instruction in this conversation."
+    },
+    {
+      "id": "no-spend",
+      "description": "Never purchase anything, subscribe to services, or accept charges on the user's behalf."
+    },
+    {
+      "id": "read-only-prod",
+      "description": "Interactions with production databases or prod URLs must be read-only; no mutations, no DDL."
+    }
+  ]
+}

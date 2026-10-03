@@ -1,0 +1,5 @@
+{
+  "name": "toolgate",
+  "description": "Policy gate for Claude Code tool calls. Every PreToolUse call is evaluated by a classifier against your JSON policy list and blocked on violation. No human in the loop.",
+  "version": "0.1.0"
+}
