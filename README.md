@@ -1,4 +1,4 @@
-# ToolGate
+# G8
 
 A policy gate for Claude Code: every tool call is checked against a JSON list
 of plain-English policies by an LLM classifier (TypeSafe.ai Jev System One) and
@@ -16,7 +16,7 @@ approval prompts, no permission dialogs.
      `allow` + each policy id.
 4. A non-`allow` answer returns `{"decision":"block","reason":...}` to Claude
    Code, which refuses the tool call and sees the policy it violated.
-5. Every decision (allow, block, error) is appended to `~/.toolgate/audit.jsonl`.
+5. Every decision (allow, block, error) is appended to `~/.g8/audit.jsonl`.
 
 Latency: ~0.4s per decision. Fail-open on classifier errors by default
 (`GATE_FAIL_CLOSED=1` to invert).
@@ -30,7 +30,7 @@ Option A — settings.json (manual):
   "hooks": {
     "PreToolUse": [
       { "matcher": "*", "hooks": [ { "type": "command",
-          "command": "node /path/to/toolgate/gate-hook.mjs" } ] }
+          "command": "node /path/to/g8/gate-hook.mjs" } ] }
     ]
   }
 }

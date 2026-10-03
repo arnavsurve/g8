@@ -14,7 +14,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
-const AUDIT_LOG = process.env.GATE_AUDIT_LOG ?? path.join(process.env.HOME ?? "", ".toolgate", "audit.jsonl");
+const AUDIT_LOG = process.env.GATE_AUDIT_LOG ?? path.join(process.env.HOME ?? "", ".g8", "audit.jsonl");
 const MODEL = "jev-latest";
 const TIMEOUT_MS = 25_000;
 const ALLOW = { allow: "The call is compliant with every policy." };
