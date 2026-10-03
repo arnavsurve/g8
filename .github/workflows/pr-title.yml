@@ -1,0 +1,22 @@
+name: lint PR title
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check conventional commit title
+        run: |
+          title="${{ github.event.pull_request.title }}"
+          if ! echo "$title" | grep -qE '^(feat|fix|docs|chore|refactor|test|perf|build|ci|style|revert)(\([a-z0-9-]+\))?!?: .+'; then
+            echo "PR title '$title' is not a conventional commit."
+            echo "use: feat: / fix: / docs: / chore: / refactor: / test: — scope optional, e.g. feat(hooks): ..."
+            exit 1
+          fi
