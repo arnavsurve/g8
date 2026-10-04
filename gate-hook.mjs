@@ -18,6 +18,7 @@ const AUDIT_LOG = process.env.GATE_AUDIT_LOG ?? path.join(process.env.HOME ?? ""
 const MODEL = "jev-latest";
 const TIMEOUT_MS = 25_000;
 const ALLOW = { allow: "The call is compliant with every policy." };
+const AUTH = `Bearer ${process.env.TYPESAFE_API_KEY || "sentinel"}`;
 
 const { JEV_ENDPOINT, JEV_MODEL, GATE_TIMEOUT_MS } = process.env;
 const endpoint = JEV_ENDPOINT || ENDPOINT;
@@ -96,7 +97,7 @@ function describeTool(payload) {
 async function classify(state) {
   const res = await fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: "Bearer sentinel", "Content-Type": "application/json" },
+    headers: { Authorization: AUTH, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
       state,

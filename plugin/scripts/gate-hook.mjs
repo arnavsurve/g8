@@ -14,9 +14,11 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
+const AUDIT_LOG = process.env.GATE_AUDIT_LOG ?? path.join(process.env.HOME ?? "", ".g8", "audit.jsonl");
 const MODEL = "jev-latest";
 const TIMEOUT_MS = 25_000;
 const ALLOW = { allow: "The call is compliant with every policy." };
+const AUTH = `Bearer ${process.env.TYPESAFE_API_KEY || "sentinel"}`;
 
 const { JEV_ENDPOINT, JEV_MODEL, GATE_TIMEOUT_MS } = process.env;
 const endpoint = JEV_ENDPOINT || ENDPOINT;
@@ -95,7 +97,7 @@ function describeTool(payload) {
 async function classify(state) {
   const res = await fetch(endpoint, {
     method: "POST",
-    headers: { Authorization: "Bearer sentinel", "Content-Type": "application/json" },
+    headers: { Authorization: AUTH, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
       state,
@@ -115,6 +117,17 @@ async function classify(state) {
   const a = data?.answers?.verdict;
   if (!a) throw new Error(`jev gave no verdict: ${JSON.stringify(data).slice(0, 200)}`);
   return a; // {choice, confidence}
+}
+
+// ---------- audit log ----------
+import { mkdirSync, appendFileSync } from "node:fs";
+function audit(record) {
+  try {
+    mkdirSync(path.dirname(AUDIT_LOG), { recursive: true });
+    appendFileSync(AUDIT_LOG, JSON.stringify({ ts: new Date().toISOString(), ...record }) + "\n");
+  } catch {
+    /* never block on audit failure */
+  }
 }
 
 // ---------- main ----------
@@ -148,9 +161,15 @@ let answer;
 try {
   answer = await classify(state);
 } catch (e) {
-  console.error(`gate-hook: classifier unavailable, allowing. ${e.message}`);
-  process.exit(0); // fail-open; set GATE_FAIL_CLOSED=1 via a wrapper to invert
+  audit({ event: "error", tool: payload.tool_name, error: e.message });
+  if (process.env.GATE_FAIL_CLOSED === "1") {
+    console.log(JSON.stringify({ decision: "block", reason: "policy gate unavailable (GATE_FAIL_CLOSED)" }));
+  }
+  console.error(`gate-hook: classifier unavailable. ${e.message}`);
+  process.exit(process.env.GATE_FAIL_CLOSED === "1" ? 0 : 0);
 }
+
+audit({ event: answer.choice === "allow" ? "allow" : "block", tool: payload.tool_name, input: state.tool_call.input, policy: answer.choice, confidence: answer.confidence });
 
 if (answer.choice !== "allow") {
   const pol = policies.find((p) => p.id === answer.choice);

